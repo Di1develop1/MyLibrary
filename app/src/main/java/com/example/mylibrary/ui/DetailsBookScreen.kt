@@ -61,7 +61,7 @@ fun DetailsBookScreen(
                     .padding(paddingValues),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Книгу не знайдено")
+                Text("Об'єкт не знайдено")
             }
             return@Scaffold
         }

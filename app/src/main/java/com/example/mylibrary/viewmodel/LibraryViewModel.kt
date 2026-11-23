@@ -1,66 +1,77 @@
-package com.example.mylibrary.viewmodel
+package com.example.mylibrary.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
-import com.example.mylibrary.model.Book
-import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.example.mylibrary.data.repository.BookRepository
+import com.example.mylibrary.domain.model.Book
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
-class LibraryViewModel : ViewModel() {
+class LibraryViewModel(
+    private val repository: BookRepository
+) : ViewModel() {
 
-    private val _books = MutableStateFlow(
-        listOf(
-            Book(id = 1, title = "Тіні забутих предків", author = "Михайло Коцюбинський", year = 1911, rating = 5),
-            Book(id = 2, title = "1984", author = "Джордж Орвелл", year = 1949, rating = 4),
-            Book(id = 3, title = "Ловець у житі", author = "Джером Селінджер", year = 1951, rating = 3)
-        )
+    val books: StateFlow<List<Book>> = repository.books.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
     )
-    val books: StateFlow<List<Book>> = _books.asStateFlow()
 
-    fun getBookById(id: Int): Book? {
-        return _books.value.find { it.id == id }
-    }
+    fun getBookById(id: Int) = repository.getBookById(id)
 
     fun addBook(title: String, author: String, year: Int) {
-        val nextId = (_books.value.maxOfOrNull { it.id } ?: 0) + 1
-        val newBook = Book(
-            id = nextId,
-            title = title.trim(),
-            author = author.trim(),
-            year = year,
-            rating = 5
-        )
-        _books.update { currentList -> currentList + newBook }
-    }
-
-    fun updateBook(id: Int, title: String, author: String, year: Int) {
-        _books.update { currentList ->
-            currentList.map { book ->
-                if (book.id == id) {
-                    book.copy(
-                        title = title.trim(),
-                        author = author.trim(),
-                        year = year
-                    )
-                } else {
-                    book
-                }
-            }
+        viewModelScope.launch {
+            repository.addBook(
+                Book(
+                    title = title.trim(),
+                    author = author.trim(),
+                    year = year,
+                    rating = 5
+                )
+            )
         }
     }
 
-    fun updateRating(id: Int, newRating: Int) {
-        _books.update { currentList ->
-            currentList.map { book ->
-                if (book.id == id) book.copy(rating = newRating.coerceIn(1, 5)) else book
-            }
+    fun updateBook(id: Int, title: String, author: String, year: Int, currentRating: Int) {
+        viewModelScope.launch {
+            repository.updateBook(
+                Book(
+                    id = id,
+                    title = title.trim(),
+                    author = author.trim(),
+                    year = year,
+                    rating = currentRating
+                )
+            )
         }
     }
 
-    fun deleteBook(id: Int) {
-        _books.update { currentList ->
-            currentList.filterNot { it.id == id }
+    fun updateRating(book: Book, newRating: Int) {
+        viewModelScope.launch {
+            repository.updateBook(
+                book.copy(rating = newRating.coerceIn(1, 5))
+            )
         }
+    }
+
+    fun deleteBook(book: Book) {
+        viewModelScope.launch {
+            repository.deleteBook(book)
+        }
+    }
+}
+
+class LibraryViewModelFactory(
+    private val repository: BookRepository
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(LibraryViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return LibraryViewModel(repository) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }

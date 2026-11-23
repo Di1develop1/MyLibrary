@@ -3,18 +3,30 @@ package com.example.mylibrary.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.example.mylibrary.viewmodel.LibraryViewModel
+import com.example.mylibrary.data.local.DatabaseProvider
+import com.example.mylibrary.data.repository.BookRepository
+import com.example.mylibrary.ui.screens.AddBookScreen
+import com.example.mylibrary.ui.screens.BooksListScreen
+import com.example.mylibrary.ui.screens.DetailsBookScreen
+import com.example.mylibrary.ui.viewmodel.LibraryViewModel
+import com.example.mylibrary.ui.viewmodel.LibraryViewModelFactory
 
 @Composable
-fun AppNavigation(
-    libraryViewModel: LibraryViewModel = viewModel()
-) {
+fun AppNavigation() {
+    val context = LocalContext.current
+    val database = DatabaseProvider.getDatabase(context)
+    val repository = BookRepository(database.bookDao())
+    val libraryViewModel: LibraryViewModel = viewModel(
+        factory = LibraryViewModelFactory(repository)
+    )
+
     val navController = rememberNavController()
     val books by libraryViewModel.books.collectAsState()
 
@@ -22,7 +34,6 @@ fun AppNavigation(
         navController = navController,
         startDestination = "books_list"
     ) {
-        // Екран 1: Список книг
         composable("books_list") {
             BooksListScreen(
                 books = books,
@@ -35,7 +46,6 @@ fun AppNavigation(
             )
         }
 
-        // Екран 2: Додавання нової книги
         composable("add_book") {
             AddBookScreen(
                 existingBook = null,
@@ -49,18 +59,23 @@ fun AppNavigation(
             )
         }
 
-        // Екран 2 (режим редагування): Редагування існуючої книги за ID
         composable(
             route = "edit_book/{bookId}",
             arguments = listOf(navArgument("bookId") { type = NavType.IntType })
         ) { backStackEntry ->
             val bookId = backStackEntry.arguments?.getInt("bookId") ?: return@composable
-            val book = books.find { it.id == bookId }
+            val book by libraryViewModel.getBookById(bookId).collectAsState(initial = null)
 
             AddBookScreen(
                 existingBook = book,
                 onSaveBook = { title, author, year ->
-                    libraryViewModel.updateBook(bookId, title, author, year)
+                    libraryViewModel.updateBook(
+                        id = bookId,
+                        title = title,
+                        author = author,
+                        year = year,
+                        currentRating = book?.rating ?: 5
+                    )
                     navController.popBackStack()
                 },
                 onCancel = {
@@ -69,25 +84,28 @@ fun AppNavigation(
             )
         }
 
-        // Екран 3: Деталі книги
         composable(
             route = "details/{bookId}",
             arguments = listOf(navArgument("bookId") { type = NavType.IntType })
         ) { backStackEntry ->
             val bookId = backStackEntry.arguments?.getInt("bookId") ?: return@composable
-            val book = books.find { it.id == bookId }
+            val book by libraryViewModel.getBookById(bookId).collectAsState(initial = null)
 
             DetailsBookScreen(
                 book = book,
                 onRatingChange = { newRating ->
-                    libraryViewModel.updateRating(bookId, newRating)
+                    book?.let { currentBook ->
+                        libraryViewModel.updateRating(currentBook, newRating)
+                    }
                 },
                 onEditClick = { id ->
                     navController.navigate("edit_book/$id")
                 },
-                onDeleteClick = { id ->
-                    libraryViewModel.deleteBook(id)
-                    navController.popBackStack()
+                onDeleteClick = { _ ->
+                    book?.let { currentBook ->
+                        libraryViewModel.deleteBook(currentBook)
+                        navController.popBackStack()
+                    }
                 },
                 onBackClick = {
                     navController.popBackStack()
